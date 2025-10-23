@@ -35,7 +35,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         unsubscribe();
     }
 
-    void selectSource(int index) {
+    void selectSource(int index, bool force) {
         std::lock_guard lock(mutex);
         if (sources.empty()) {
             return;
@@ -45,7 +45,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         }
         selectedIndex = index;
         const std::string newSource = sources[static_cast<std::size_t>(index)].id;
-        if (newSource == currentSourceId) {
+        if (!force && newSource == currentSourceId) {
             return;
         }
         subscribe(newSource);
@@ -212,7 +212,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
                     if (auto self = weakSelf.lock()) {
                         self->resetMin(key);
                     }
-                });
+                },ftxui::ButtonOption::Ascii());
                 auto row = ftxui::Renderer(resetButton, [line, resetButton]() {
                     using namespace ftxui;
                     return hbox({
@@ -229,7 +229,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
                     if (auto self = weakSelf.lock()) {
                         self->resetMax(key);
                     }
-                });
+                },ftxui::ButtonOption::Ascii());
                 auto row = ftxui::Renderer(resetButton, [line, resetButton]() {
                     using namespace ftxui;
                     return hbox({
@@ -273,7 +273,7 @@ public:
         ftxui::MenuOption menuOption;
         menuOption.on_change = [weak = std::weak_ptr(state_), this]() {
             if (auto state = weak.lock()) {
-                state->selectSource(state->selectedIndex);
+                state->selectSource(state->selectedIndex, false);
             }
         };
 
@@ -291,13 +291,14 @@ public:
 
         auto layout = ftxui::Container::Horizontal({
             menuFrame,
+            ftxui::Renderer([] { return ftxui::separator(); }),
             metricsFrame,
         });
 
         Add(layout);
 
         if (!state_->sourceTitles.empty()) {
-            state_->selectSource(state_->selectedIndex);
+            state_->selectSource(state_->selectedIndex, true);
         } else {
             state_->rebuildMetricsPane();
         }
