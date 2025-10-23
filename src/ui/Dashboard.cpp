@@ -1,10 +1,13 @@
 #include "Dashboard.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <memory>
 #include <utility>
 
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/dom/node.hpp>
 #include <ftxui/util/ref.hpp>
@@ -12,16 +15,20 @@
 namespace ui {
 
 Dashboard::Dashboard(core::ModuleContext& moduleContext)
-    : moduleContext_(moduleContext) {}
+    : moduleContext_(moduleContext)
+{
+}
 
-void Dashboard::setAvailableWindows(std::vector<WindowSpec> specs) {
+void Dashboard::setAvailableWindows(std::vector<WindowSpec> specs)
+{
     availableWindows_ = std::move(specs);
     updateAvailableWindowTitles();
     clampSelectedWindowIndex();
     markLayoutDirty();
 }
 
-std::string Dashboard::addWindow(const WindowSpec& spec) {
+std::string Dashboard::addWindow(const WindowSpec& spec)
+{
     const std::string id = generateInstanceId(spec);
     WindowInstance instance;
     instance.instanceId = id;
@@ -36,28 +43,33 @@ std::string Dashboard::addWindow(const WindowSpec& spec) {
     instance.resizeRight = spec.resizeRight;
     instance.resizeTop = spec.resizeTop;
     instance.resizeBottom = spec.resizeBottom;
-    ensureComponent(instance);
-    activeWindows_.push_back(std::move(instance));
+    instance.renameLines = { spec.title, std::string {}, std::string {} };
+    activeWindows_.insert(activeWindows_.begin(), std::move(instance));
+    auto& stored = activeWindows_.front();
+    ensureComponent(stored);
     cascadeOffset_ = (cascadeOffset_ + 2) % 20;
     markLayoutDirty();
     return id;
 }
 
-std::string Dashboard::addWindowById(const std::string& specId) {
+std::string Dashboard::addWindowById(const std::string& specId)
+{
     if (auto* spec = findSpec(specId)) {
         return addWindow(*spec);
     }
     return {};
 }
 
-std::string Dashboard::addWindowByIndex(int index) {
+std::string Dashboard::addWindowByIndex(int index)
+{
     if (index < 0 || index >= static_cast<int>(availableWindows_.size())) {
         return {};
     }
     return addWindow(availableWindows_[static_cast<std::size_t>(index)]);
 }
 
-bool Dashboard::cloneWindow(const std::string& instanceId) {
+bool Dashboard::cloneWindow(const std::string& instanceId)
+{
     if (auto* instance = findInstance(instanceId)) {
         if (!instance->spec.cloneable) {
             return false;
@@ -77,8 +89,10 @@ bool Dashboard::cloneWindow(const std::string& instanceId) {
         clone.resizeRight = instance->resizeRight;
         clone.resizeTop = instance->resizeTop;
         clone.resizeBottom = instance->resizeBottom;
-        ensureComponent(clone);
-        activeWindows_.push_back(std::move(clone));
+        clone.renameLines = instance->renameLines;
+        activeWindows_.insert(activeWindows_.begin(), std::move(clone));
+        auto& stored = activeWindows_.front();
+        ensureComponent(stored);
         cascadeOffset_ = (cascadeOffset_ + 2) % 20;
         markLayoutDirty();
         return true;
@@ -86,7 +100,8 @@ bool Dashboard::cloneWindow(const std::string& instanceId) {
     return false;
 }
 
-bool Dashboard::closeWindow(const std::string& instanceId) {
+bool Dashboard::closeWindow(const std::string& instanceId)
+{
     const auto it = std::remove_if(activeWindows_.begin(), activeWindows_.end(), [&](const WindowInstance& instance) {
         return instance.instanceId == instanceId;
     });
@@ -102,7 +117,8 @@ bool Dashboard::closeWindow(const std::string& instanceId) {
     return false;
 }
 
-ftxui::Component Dashboard::build() {
+ftxui::Component Dashboard::build()
+{
     ensureRootInitialized();
     if (layoutDirty_) {
         refreshWindowComponents();
@@ -110,11 +126,13 @@ ftxui::Component Dashboard::build() {
     return root_;
 }
 
-const std::vector<WindowSpec>& Dashboard::availableWindows() const {
+const std::vector<WindowSpec>& Dashboard::availableWindows() const
+{
     return availableWindows_;
 }
 
-std::vector<std::string> Dashboard::activeWindowIds() const {
+std::vector<std::string> Dashboard::activeWindowIds() const
+{
     std::vector<std::string> ids;
     ids.reserve(activeWindows_.size());
     for (const auto& window : activeWindows_) {
@@ -123,7 +141,8 @@ std::vector<std::string> Dashboard::activeWindowIds() const {
     return ids;
 }
 
-ui::WindowSpec* Dashboard::findSpec(const std::string& specId) {
+ui::WindowSpec* Dashboard::findSpec(const std::string& specId)
+{
     auto it = std::find_if(availableWindows_.begin(), availableWindows_.end(), [&](const WindowSpec& spec) {
         return spec.id == specId;
     });
@@ -133,7 +152,8 @@ ui::WindowSpec* Dashboard::findSpec(const std::string& specId) {
     return nullptr;
 }
 
-Dashboard::WindowInstance* Dashboard::findInstance(const std::string& instanceId) {
+Dashboard::WindowInstance* Dashboard::findInstance(const std::string& instanceId)
+{
     auto it = std::find_if(activeWindows_.begin(), activeWindows_.end(), [&](const WindowInstance& instance) {
         return instance.instanceId == instanceId;
     });
@@ -143,17 +163,20 @@ Dashboard::WindowInstance* Dashboard::findInstance(const std::string& instanceId
     return nullptr;
 }
 
-std::string Dashboard::generateInstanceId(const WindowSpec& spec) {
+std::string Dashboard::generateInstanceId(const WindowSpec& spec)
+{
     return spec.id + "#" + std::to_string(nextWindowIndex_++);
 }
 
-void Dashboard::ensureComponent(WindowInstance& instance) {
+void Dashboard::ensureComponent(WindowInstance& instance)
+{
     if (!instance.component && instance.spec.componentFactory) {
         instance.component = instance.spec.componentFactory(instance.context);
     }
 }
 
-void Dashboard::ensureRootInitialized() {
+void Dashboard::ensureRootInitialized()
+{
     if (root_) {
         return;
     }
@@ -161,7 +184,8 @@ void Dashboard::ensureRootInitialized() {
     layoutDirty_ = true;
 }
 
-void Dashboard::refreshWindowComponents() {
+void Dashboard::refreshWindowComponents()
+{
     if (!root_) {
         return;
     }
@@ -180,11 +204,22 @@ void Dashboard::refreshWindowComponents() {
     layoutDirty_ = false;
 }
 
-void Dashboard::markLayoutDirty() {
+void Dashboard::markLayoutDirty()
+{
     layoutDirty_ = true;
+    if (auto* screen = ftxui::ScreenInteractive::Active()) {
+        screen->Post([this]() {
+            if (layoutDirty_) {
+                refreshWindowComponents();
+            }
+        });
+    } else if (root_) {
+        refreshWindowComponents();
+    }
 }
 
-void Dashboard::updateAvailableWindowTitles() {
+void Dashboard::updateAvailableWindowTitles()
+{
     availableWindowTitles_.clear();
     availableWindowTitles_.reserve(availableWindows_.size());
     for (const auto& spec : availableWindows_) {
@@ -196,7 +231,8 @@ void Dashboard::updateAvailableWindowTitles() {
     }
 }
 
-void Dashboard::clampSelectedWindowIndex() {
+void Dashboard::clampSelectedWindowIndex()
+{
     if (availableWindows_.empty()) {
         selectedWindowIndex_ = 0;
         return;
@@ -208,16 +244,18 @@ void Dashboard::clampSelectedWindowIndex() {
     }
 }
 
-ftxui::Component Dashboard::buildHeader() {
+ftxui::Component Dashboard::buildHeader()
+{
     using namespace ftxui;
 
     if (availableWindows_.empty()) {
         return Renderer([this]() {
             return hbox({
-                text("Workbench Dashboard") | bold,
-                filler(),
-                text("No modules registered yet.") | dim,
-            }) | border;
+                       text("Workbench Dashboard") | bold,
+                       filler(),
+                       text("No modules registered yet.") | dim,
+                   })
+                | border;
         });
     }
 
@@ -240,30 +278,34 @@ ftxui::Component Dashboard::buildHeader() {
     return Renderer(headerControls, [this, menuFrame, addButton]() {
         using namespace ftxui;
         return hbox({
-            text("Workbench Dashboard") | bold,
-            separator(),
-            vbox({
-                text("Available Windows") | dim,
-                menuFrame->Render(),
-                text(" "),
-                addButton->Render(),
-            }) | border | flex,
-            filler(),
-            text("Open: ") | dim,
-            text(std::to_string(activeWindows_.size())) | dim,
-        }) | border;
+                   text("Workbench Dashboard") | bold,
+                   separator(),
+                   vbox({
+                       text("Available Windows") | dim,
+                       menuFrame->Render(),
+                       text(" "),
+                       addButton->Render(),
+                   }) | border
+                       | flex,
+                   filler(),
+                   text("Open: ") | dim,
+                   text(std::to_string(activeWindows_.size())) | dim,
+               })
+            | border;
     });
 }
 
-ftxui::Component Dashboard::buildWindowArea() {
+ftxui::Component Dashboard::buildWindowArea()
+{
     using namespace ftxui;
 
     if (activeWindows_.empty()) {
         return Renderer([]() {
             return vbox({
-                text("No windows open.") | dim,
-                text("Use the header above to add one.") | dim,
-            }) | border;
+                       text("No windows open.") | dim,
+                       text("Use the header above to add one.") | dim,
+                   })
+                | border;
         });
     }
 
@@ -280,23 +322,23 @@ ftxui::Component Dashboard::buildWindowArea() {
     });
 }
 
-ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance) {
+ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance)
+{
     using namespace ftxui;
 
     ensureComponent(instance);
 
     const std::string title = instance.spec.title.empty() ? instance.instanceId : instance.spec.title;
-    const std::string instanceId = instance.instanceId;
 
     Components controlComponents;
     if (instance.spec.cloneable) {
-        controlComponents.push_back(Button("Clone", [this, instanceId]() {
-            cloneWindow(instanceId);
+        controlComponents.push_back(Button("Clone", [this, id = instance.instanceId]() {
+            cloneWindow(id);
         }));
     }
     if (instance.spec.closable) {
-        controlComponents.push_back(Button("Close", [this, instanceId]() {
-            closeWindow(instanceId);
+        controlComponents.push_back(Button("Close", [this, id = instance.instanceId]() {
+            closeWindow(id);
         }));
     }
 
@@ -309,14 +351,9 @@ ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance) {
     } else {
         controlsContainer = Container::Horizontal(std::move(controlComponents));
     }
-    auto headerRenderer = Renderer(controlsContainer, [title, instanceId, controlsContainer]() {
+    auto titleRenderer = Renderer([title]() {
         using namespace ftxui;
-        return hbox({
-            text(title) | bold,
-            text(" (" + instanceId + ")") | dim,
-            filler(),
-            controlsContainer->Render(),
-        });
+        return text(title) | bold;
     });
 
     Component contentComponent = instance.component;
@@ -327,14 +364,46 @@ ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance) {
         });
     }
 
-    auto windowContainer = Container::Vertical({
-        headerRenderer,
-        contentComponent,
+    auto renameInputs = std::make_shared<std::array<Component, 3>>();
+    const char* placeholders[3] = { "Window label", "...", "..." };
+    for (std::size_t i = 0; i < renameInputs->size(); ++i) {
+        auto option = ftxui::InputOption::Default();
+        option.placeholder = placeholders[i];
+        option.multiline = false;
+        (*renameInputs)[i] = Input(&instance.renameLines[i], option);
+    }
+    auto renameContainer = Container::Vertical({
+        (*renameInputs)[0],
+        (*renameInputs)[1],
+        (*renameInputs)[2],
     });
-    auto innerRenderer = Renderer(windowContainer, [headerRenderer, contentComponent]() {
+    auto renameRenderer = Renderer(renameContainer, [renameInputs, renameContainer]() {
         using namespace ftxui;
         return vbox({
-            headerRenderer->Render(),
+            (*renameInputs)[0] ? (*renameInputs)[0]->Render() : text(""),
+            (*renameInputs)[1] ? (*renameInputs)[1]->Render() : text(""),
+            (*renameInputs)[2] ? (*renameInputs)[2]->Render() : text(""),
+        });
+    });
+
+    auto windowContainer = Container::Vertical({
+        Container::Horizontal({
+            titleRenderer,
+            controlsContainer,
+        }),
+        renameRenderer,
+        contentComponent,
+    });
+    auto innerRenderer = Renderer(windowContainer, [titleRenderer, controlsContainer, renameRenderer, contentComponent]() {
+        using namespace ftxui;
+        return vbox({
+            hbox({
+                renameRenderer->Render(),
+                // titleRenderer->Render(),
+                filler(),
+                controlsContainer->Render(),
+            }),
+            // renameRenderer->Render(),
             separator(),
             contentComponent->Render() | flex,
         });
@@ -354,4 +423,4 @@ ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance) {
     return Window(std::move(options));
 }
 
-}  // namespace ui
+} // namespace ui

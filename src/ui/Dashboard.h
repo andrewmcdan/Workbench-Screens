@@ -2,6 +2,7 @@
 
 #include "ui/WindowSpec.h"
 
+#include <array>
 #include <vector>
 
 namespace ui {
@@ -38,6 +39,7 @@ private:
         bool resizeRight{true};
         bool resizeTop{true};
         bool resizeBottom{true};
+        std::array<std::string, 3> renameLines{};
     };
 
     WindowSpec* findSpec(const std::string& specId);
