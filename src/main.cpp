@@ -1,7 +1,10 @@
 #include "App.h"
+#include "modules/DemoModule.h"
+
+#include <memory>
 
 int main() {
-    App app("Workbench Screens");
-    app.run();
-    return 0;
+    App app;
+    app.registerModule(std::make_unique<DemoModule>());
+    return app.run();
 }
