@@ -279,8 +279,8 @@ ftxui::Component Dashboard::buildHeader()
         using namespace ftxui;
         return hbox({
                    vbox({
-                       color(ftxui::Color::RGB(255, 0, 0), text("Workbench") | bold),
-                       color(ftxui::Color::RGB(255, 0, 0), text("Dashboard") | bold),
+                       color(ftxui::Color::RGB(255, 255, 0), text("Workbench") | bold),
+                       color(ftxui::Color::RGB(255, 255, 0), text("Dashboard") | bold),
                    }) | size(WIDTH, EQUAL, 10),
                    separator(),
                    vbox({
