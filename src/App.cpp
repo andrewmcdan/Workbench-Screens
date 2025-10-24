@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/screen/color.hpp>
 
 App::App()
     : hardwareService_{dataRegistry_},
@@ -22,6 +23,7 @@ int App::run() {
 
     auto component = dashboard_.build();
     if (component) {
+        ftxui::Terminal::SetColorSupport(ftxui::Terminal::Color::TrueColor);
         auto screen = ftxui::ScreenInteractive::Fullscreen();
         screen.Loop(component);
     }

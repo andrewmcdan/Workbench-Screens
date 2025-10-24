@@ -14,9 +14,9 @@
 #include <string>
 #include <utility>
 
-#ifndef _WIN32
-#include <jsonrpccpp/common/exception.h>
-#else
+// #ifndef _WIN32
+// #include <jsonrpccpp/common/exception.h>
+// #else
 namespace jsonrpc {
 class JsonRpcException : public std::runtime_error {
 public:
@@ -24,7 +24,7 @@ public:
         : std::runtime_error(message) {}
 };
 }  // namespace jsonrpc
-#endif
+// #endif
 
 #ifndef _WIN32
 #include <errno.h>

@@ -35,16 +35,26 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_MakeAvailable(nlohmann_json)
 
-FetchContent_Declare(jsonrpccpp
-    GIT_REPOSITORY https://github.com/cinemast/libjson-rpc-cpp.git
-    GIT_TAG        v1.4.1
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
+FetchContent_Declare(
+    json_rpc_cxx
+    GIT_REPOSITORY https://github.com/jsonrpcx/json-rpc-cxx.git
+    GIT_TAG master
+    UPDATE_DISCONNECTED FALSE
 )
 
-FetchContent_Populate(jsonrpccpp)
-
+FetchContent_GetProperties(json_rpc_cxx)
+if(NOT json_rpc_cxx_POPULATED)
+  FetchContent_Populate(json_rpc_cxx)
+  # header-only: just add include path
+  add_library(json-rpc-cxx INTERFACE)
+  target_include_directories(json-rpc-cxx INTERFACE
+    ${json_rpc_cxx_SOURCE_DIR}/include)
+  # It needs nlohmann_json for types
+  target_link_libraries(json-rpc-cxx INTERFACE nlohmann_json::nlohmann_json)
+endif()
 set(JSONRPCCPP_INCLUDE_DIR "${jsonrpccpp_SOURCE_DIR}/src")
+
+
 
 file(GLOB_RECURSE WORKBENCH_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
