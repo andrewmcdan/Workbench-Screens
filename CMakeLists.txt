@@ -26,6 +26,26 @@ FetchContent_Declare(ftxui
 
 FetchContent_MakeAvailable(ftxui)
 
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.2
+    GIT_SHALLOW    TRUE
+    EXCLUDE_FROM_ALL
+)
+
+FetchContent_MakeAvailable(nlohmann_json)
+
+FetchContent_Declare(jsonrpccpp
+    GIT_REPOSITORY https://github.com/cinemast/libjson-rpc-cpp.git
+    GIT_TAG        v1.4.1
+    GIT_SHALLOW    TRUE
+    EXCLUDE_FROM_ALL
+)
+
+FetchContent_Populate(jsonrpccpp)
+
+set(JSONRPCCPP_INCLUDE_DIR "${jsonrpccpp_SOURCE_DIR}/src")
+
 file(GLOB_RECURSE WORKBENCH_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
@@ -37,6 +57,7 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         src
+        ${JSONRPCCPP_INCLUDE_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -44,4 +65,5 @@ target_link_libraries(${PROJECT_NAME}
         ftxui::screen
         ftxui::dom
         ftxui::component
+        nlohmann_json::nlohmann_json
 )

@@ -6,7 +6,7 @@
 #include "core/Module.h"
 #include "core/ModuleContext.h"
 #include "core/PluginManager.h"
-#include "hardware/TeensyLink.h"
+#include "hardware/HardwareServiceClient.h"
 #include "ui/Dashboard.h"
 
 #include <string>
@@ -20,14 +20,14 @@ public:
     int run();
 
     core::DataRegistry& dataRegistry();
-    hardware::TeensyLink& teensyLink();
+    hardware::HardwareServiceClient& hardwareService();
 
 private:
     void bootstrapModules();
     void openDefaultWindows();
 
     core::DataRegistry dataRegistry_;
-    hardware::TeensyLink teensyLink_;
+    hardware::HardwareServiceClient hardwareService_;
     core::ModuleContext moduleContext_;
     core::PluginManager pluginManager_;
     ui::Dashboard dashboard_;

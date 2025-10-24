@@ -56,6 +56,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         metrics.clear();
         currentSourceId = sourceId;
 
+        moduleContext.hardwareService.subscribeSource(sourceId);
+
         auto self = weak_from_this();
         observerToken = moduleContext.dataRegistry.addObserver(sourceId, [self](const core::DataFrame& frame) {
             if (auto state = self.lock()) {
@@ -71,6 +73,9 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
     void unsubscribe() {
         if (observerToken != 0 && !currentSourceId.empty()) {
             moduleContext.dataRegistry.removeObserver(currentSourceId, observerToken);
+        }
+        if (!currentSourceId.empty()) {
+            moduleContext.hardwareService.unsubscribeSource(currentSourceId);
         }
         observerToken = 0;
         currentSourceId.clear();

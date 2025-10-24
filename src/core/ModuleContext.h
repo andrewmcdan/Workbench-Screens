@@ -5,14 +5,14 @@ class DataRegistry;
 }
 
 namespace hardware {
-class TeensyLink;
+class HardwareServiceClient;
 }
 
 namespace core {
 
 struct ModuleContext {
     DataRegistry& dataRegistry;
-    hardware::TeensyLink& teensyLink;
+    hardware::HardwareServiceClient& hardwareService;
 };
 
 }  // namespace core

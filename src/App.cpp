@@ -6,7 +6,8 @@
 #include <ftxui/component/screen_interactive.hpp>
 
 App::App()
-    : moduleContext_{dataRegistry_, teensyLink_},
+    : hardwareService_{dataRegistry_},
+      moduleContext_{dataRegistry_, hardwareService_},
       pluginManager_(moduleContext_),
       dashboard_(moduleContext_) {}
 
@@ -16,6 +17,7 @@ void App::registerModule(core::ModulePtr module) {
 }
 
 int App::run() {
+    hardwareService_.start();
     bootstrapModules();
 
     auto component = dashboard_.build();
@@ -25,6 +27,7 @@ int App::run() {
     }
 
     pluginManager_.shutdownModules();
+    hardwareService_.stop();
     modulesBootstrapped_ = false;
     return 0;
 }
@@ -33,8 +36,8 @@ core::DataRegistry& App::dataRegistry() {
     return dataRegistry_;
 }
 
-hardware::TeensyLink& App::teensyLink() {
-    return teensyLink_;
+hardware::HardwareServiceClient& App::hardwareService() {
+    return hardwareService_;
 }
 
 void App::bootstrapModules() {

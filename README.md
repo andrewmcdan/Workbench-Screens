@@ -2,7 +2,7 @@
 
 Workbench Screens is a modular C++ application intended to run on a Raspberry Pi that drives one or more LCD panels on an electronics workbench. It is designed to aggregate measurements and diagnostics from diverse instruments—power supplies, logic analyzers, oscilloscopes, serial devices, and Teensy-hosted peripherals—and present them through a flexible UI built with [FTXUI](https://github.com/ArthurSonzogni/ftxui).
 
-This repository currently provides the core architecture, plugin interfaces, UI scaffolding, and a Teensy communication stub required to grow the system into a fully featured workbench console.
+This repository currently provides the core architecture, plugin interfaces, UI scaffolding, and a hardware relay client skeleton required to grow the system into a fully featured workbench console.
 
 ---
 
@@ -11,7 +11,7 @@ This repository currently provides the core architecture, plugin interfaces, UI 
 - **Modular data sources**: Each feature is packaged as a plugin implementing the `core::Module` interface.
 - **Central data registry**: Modules publish structured data frames that can be observed by other components and UI widgets.
 - **FTXUI dashboard**: A window-based terminal interface capable of hosting multiple visualizations with add/close/clone semantics.
-- **Teensy link abstraction**: A placeholder protocol handler for exchanging measurements and GPIO commands with a Teensy 4.1 over USB.
+- **Hardware relay client**: Sketches how the app will consume data broadcast from the dedicated service that interfaces with the Teensy 4.1 and other USB instruments.
 - **Demo module**: A mock voltage monitor illustrating how to register data sources and expose UI panels.
 
 ---
@@ -26,7 +26,7 @@ This repository currently provides the core architecture, plugin interfaces, UI 
 │   ├── main.cpp             # Entry point registering demo module
 │   ├── core/                # Data models, module interfaces, plugin manager
 │   ├── ui/                  # Dashboard + window descriptors (FTXUI integration)
-│   ├── hardware/            # Teensy link and protocol placeholders
+│   ├── hardware/            # Hardware relay client stub and future IPC plumbing
 │   └── modules/             # Example modules (currently DemoModule)
 └── .gitignore
 ```
@@ -70,7 +70,7 @@ Without FTXUI available, the executable will initialize modules and immediately 
 `App` wires together the global subsystems:
 
 - Instantiates a `core::DataRegistry` for module data exchange.
-- Owns a `hardware::TeensyLink` instance for hardware communication.
+- Owns a `hardware::HardwareServiceClient` that talks to the external hardware relay over a Unix domain socket.
 - Constructs a `core::PluginManager` that manages module lifecycles.
 - Hosts a `ui::Dashboard` that renders window instances using FTXUI.
 - Collects window specifications from modules and opens any flagged `openByDefault`.
@@ -80,7 +80,7 @@ Without FTXUI available, the executable will initialize modules and immediately 
 - **`Types.h`** – Defines canonical data payload shapes (`NumericSample`, `WaveformSample`, `SerialSample`, `LogicSample`, `GpioState`) and the `DataFrame` container delivered through the registry.
 - **`DataRegistry`** – Maintains source metadata, latest frames, and observer callbacks. Modules publish via `update`, consumers subscribe with `addObserver`.
 - **`Module.h`** – Contract for plugins. Each module declares sources, default windows, and responds to lifecycle hooks (`initialize`, `shutdown`, `tick`).
-- **`ModuleContext`** – Bundles access to shared facilities (`DataRegistry`, `TeensyLink`). Passed to modules and UI window factories.
+- **`ModuleContext`** – Bundles access to shared facilities (`DataRegistry`, `HardwareServiceClient`). Passed to modules and UI window factories.
 - **`PluginManager`** – Tracks module instances, registers their sources with the registry, dispatches lifecycle events, and supports runtime addition/removal.
 
 ### UI Layer (`src/ui/`)
@@ -92,16 +92,20 @@ The UI is intentionally minimal: header controls are placeholders and window-lev
 
 ### Hardware Layer (`src/hardware/`)
 
-- **`TeensyLink`** – Thread-safe wrapper that will own the USB serial connection. Currently queues incoming byte buffers and dispatches decoded messages to the `DataRegistry`.
-- **`TeensyProtocol`** – Enumerates the protocol message types (handshake, measurement updates, logic frames, serial data, GPIO commands, heartbeats). Encoding/decoding functions return placeholder stubs to be implemented once the on-device firmware protocol is finalized.
+- **`HardwareServiceClient`** - Placeholder JSON-RPC client that will maintain a persistent Unix domain socket connection to the hardware relay service. The comments outline how we will:
+  - connect and register with the relay (`workbench.registerClient`);
+  - subscribe to specific source streams (`workbench.subscribe`);
+  - translate `workbench.dataFrame` notifications into `DataRegistry::update()` calls so every UI instance receives identical data;
+  - forward control requests (e.g., GPIO toggles, metric resets) back to the relay via JSON-RPC.
 
 ### Modules (`src/modules/`)
 
-- **`DemoModule`** – A reference module that:
+- **`DemoModule`** - A reference module that:
   - Declares a numeric voltage data source (`demo.metrics`).
   - Publishes periodic mock voltage samples to the registry.
   - Registers a default-open window that reads the latest published value and renders it via FTXUI.
   - Demonstrates use of the module `tick` hook to schedule updates.
+- **`NumericDataModule`** - Consumes any numeric sources emitted by the relay or demo modules, lets the user pick a source from a menu, and displays current/min/max readings with inline reset controls.
 
 ---
 
@@ -130,27 +134,27 @@ This design enables both UI widgets and background analytics modules to tap into
 
 ---
 
-## Teensy Communication Protocol (Draft)
+## Hardware Relay Service (Draft)
 
-The protocol is still a stub; the headers enumerate anticipated message types to aid firmware development.
+The Raspberry Pi will host a lightweight relay daemon that exposes a JSON-RPC 2.0 endpoint over a Unix domain socket (`/var/run/workbench/hardware-relay.sock` by default). The relay owns every physical connection (Teensy USB, serial adapters, GPIO expanders) and pushes normalized telemetry to any number of UI processes.
 
-| Message Type             | Direction        | Notes                                                                   |
-|--------------------------|------------------|-------------------------------------------------------------------------|
-| `HandshakeRequest/Response` | Teensy ↔ Pi      | Establish protocol version, firmware ID, compatibility.                 |
-| `MeasurementUpdate`      | Teensy → Pi      | Batched numeric channel readings (volts, amps, watts, etc.).            |
-| `LogicFrame`             | Teensy → Pi      | Packed digital logic samples plus sample rate metadata.                 |
-| `SerialData`             | Teensy → Pi      | Raw serial bytes forwarded from attached instruments or adapters.       |
-| `SetGpioState`           | Pi → Teensy      | Command to drive a GPIO pin high/low (for relays, toggles, etc.).       |
-| `QueryGpioState` / `GpioStateResponse` | Pi ↔ Teensy | Poll or receive current GPIO levels.                                   |
-| `Heartbeat` / `Ack` / `Nack` | Bidirectional | Keep-alive and reliability semantics (timeouts, retries, diagnostics).   |
+| Method / Notification      | Direction | Purpose                                                               |
+|----------------------------|-----------|-----------------------------------------------------------------------|
+| `workbench.registerClient` | UI → Relay | Negotiate protocol version and request backlog replay.                |
+| `workbench.subscribe`      | UI → Relay | Begin streaming frames for a specific `sourceId`.                     |
+| `workbench.unsubscribe`    | UI → Relay | Stop streaming a previously requested source.                         |
+| `workbench.dataFrame`      | Relay → UI | Notification containing a serialized `DataFrame` payload.             |
+| `workbench.metadata`       | Relay → UI | Broadcast refreshed source metadata (names, units, capabilities).     |
+| `workbench.resetMetric`    | UI → Relay | Ask the relay to clear statistics (min/max/etc.) for a channel.       |
+| `workbench.gpioSet`        | UI → Relay | Example control call for toggling Teensy or expander GPIO lines.      |
 
-Implementations of `Encode`/`Decode` should define a lightweight framing scheme (length prefix, checksum, etc.) once the payload formats are finalized. `TeensyLink::handleMessage` already demonstrates how measurement and GPIO payloads map into registry frames.
+Inside this application the `HardwareServiceClient` converts every `workbench.dataFrame` notification into `DataRegistry::update()` calls so modules behave as if the data originated locally. Any control requests (resetting metrics, toggling outputs, future commands) are issued as JSON-RPC calls back to the relay, keeping all USB/serial access centralized.
 
 ---
 
 ## Roadmap & Suggestions
 
-- **Complete protocol serialization** and integrate with a USB serial backend (Boost.Asio, libserialport, or native Win32 APIs).
+- **Implement relay + client transport**: finish the JSON-RPC socket logic (framing, reconnects) and back the relay with real Teensy/USB drivers.
 - **Implement real-time UI interactivity**: button handlers for window controls, module selection menus, and layout management (tabs, grids).
 - **Add background scheduler** to call `PluginManager::tickModules` at a fixed cadence without blocking the UI.
 - **Expand module catalog**: serial console, oscilloscope viewer, logic analyzer timelines, power supply controllers.
