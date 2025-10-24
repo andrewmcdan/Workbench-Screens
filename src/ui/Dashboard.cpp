@@ -251,7 +251,7 @@ ftxui::Component Dashboard::buildHeader()
     if (availableWindows_.empty()) {
         return Renderer([this]() {
             return hbox({
-                       color(ftxui::Color::RGB(255,1,1), text("Workbench Dashboard") | bold),
+                       color(ftxui::Color::RGB(255, 1, 1), text("Workbench Dashboard") | bold),
                        filler(),
                        text("No modules registered yet.") | dim,
                    })
@@ -278,10 +278,10 @@ ftxui::Component Dashboard::buildHeader()
     return Renderer(headerControls, [this, menuFrame, addButton]() {
         using namespace ftxui;
         return hbox({
-                    vbox({
-                   color(ftxui::Color::RGB(255,0,0), text("Workbench") | bold),
-                   color(ftxui::Color::RGB(255,0,0), text("Dashboard") | bold),
-                }) | size(WIDTH, EQUAL, 10),
+                   vbox({
+                       color(ftxui::Color::RGB(255, 0, 0), text("Workbench") | bold),
+                       color(ftxui::Color::RGB(255, 0, 0), text("Dashboard") | bold),
+                   }) | size(WIDTH, EQUAL, 10),
                    separator(),
                    vbox({
                        text("Available Windows") | dim,
