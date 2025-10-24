@@ -1,4 +1,5 @@
 #include "modules/NumericDataModule.h"
+#include "hardware/HardwareServiceClient.h"
 
 #include "core/DataRegistry.h"
 
@@ -19,23 +20,27 @@ namespace {
 struct MetricStats {
     std::string channelId;
     std::string unit;
-    double current{0.0};
-    double min{0.0};
-    double max{0.0};
-    bool hasCurrent{false};
-    bool hasMin{false};
-    bool hasMax{false};
+    double current { 0.0 };
+    double min { 0.0 };
+    double max { 0.0 };
+    bool hasCurrent { false };
+    bool hasMin { false };
+    bool hasMax { false };
 };
 
 struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
     explicit NumericDataState(core::ModuleContext& moduleContext)
-        : moduleContext(moduleContext) {}
+        : moduleContext(moduleContext)
+    {
+    }
 
-    ~NumericDataState() {
+    ~NumericDataState()
+    {
         unsubscribe();
     }
 
-    void selectSource(int index, bool force) {
+    void selectSource(int index, bool force)
+    {
         std::lock_guard lock(mutex);
         if (sources.empty()) {
             return;
@@ -51,7 +56,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         subscribe(newSource);
     }
 
-    void subscribe(const std::string& sourceId) {
+    void subscribe(const std::string& sourceId)
+    {
         unsubscribe();
         metrics.clear();
         currentSourceId = sourceId;
@@ -70,7 +76,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         }
     }
 
-    void unsubscribe() {
+    void unsubscribe()
+    {
         if (observerToken != 0 && !currentSourceId.empty()) {
             moduleContext.dataRegistry.removeObserver(currentSourceId, observerToken);
         }
@@ -81,7 +88,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         currentSourceId.clear();
     }
 
-    void handleFrame(const core::DataFrame& frame) {
+    void handleFrame(const core::DataFrame& frame)
+    {
         {
             std::lock_guard lock(mutex);
             for (const auto& point : frame.points) {
@@ -105,7 +113,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         requestRebuild();
     }
 
-    void resetMin(const std::string& channelId) {
+    void resetMin(const std::string& channelId)
+    {
         {
             std::lock_guard lock(mutex);
             if (auto it = metrics.find(channelId); it != metrics.end()) {
@@ -118,7 +127,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         requestRebuild();
     }
 
-    void resetMax(const std::string& channelId) {
+    void resetMax(const std::string& channelId)
+    {
         {
             std::lock_guard lock(mutex);
             if (auto it = metrics.find(channelId); it != metrics.end()) {
@@ -131,7 +141,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         requestRebuild();
     }
 
-    std::vector<std::string> buildMetricStrings() const {
+    std::vector<std::string> buildMetricStrings() const
+    {
         std::lock_guard lock(mutex);
         std::vector<std::string> lines;
         lines.reserve(metrics.size() * 3);
@@ -151,7 +162,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         return lines;
     }
 
-    std::vector<std::string> collectSortedKeys() const {
+    std::vector<std::string> collectSortedKeys() const
+    {
         std::vector<std::string> keys;
         keys.reserve(metrics.size());
         for (const auto& [key, _] : metrics) {
@@ -161,7 +173,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         return keys;
     }
 
-    static std::string formatValue(const std::string& channelId, double value, const std::string& unit, const std::string& kind) {
+    static std::string formatValue(const std::string& channelId, double value, const std::string& unit, const std::string& kind)
+    {
         std::string label = channelId;
         if (!kind.empty()) {
             label = kind + " " + label;
@@ -169,13 +182,15 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         return label + ": " + formatNumeric(value) + (unit.empty() ? "" : " " + unit);
     }
 
-    static std::string formatNumeric(double value) {
+    static std::string formatNumeric(double value)
+    {
         char buffer[64];
         std::snprintf(buffer, sizeof(buffer), "%.3f", value);
         return std::string(buffer);
     }
 
-    void requestRebuild() {
+    void requestRebuild()
+    {
         auto self = shared_from_this();
         if (auto* screen = ftxui::ScreenInteractive::Active()) {
             screen->Post([self]() {
@@ -186,7 +201,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         }
     }
 
-    void rebuildMetricsPane() {
+    void rebuildMetricsPane()
+    {
         if (!metricsPane) {
             return;
         }
@@ -216,8 +232,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
                 auto resetButton = ftxui::Button("Reset", [weakSelf, key]() {
                     if (auto self = weakSelf.lock()) {
                         self->resetMin(key);
-                    }
-                },ftxui::ButtonOption::Ascii());
+                    } }, ftxui::ButtonOption::Ascii());
                 auto row = ftxui::Renderer(resetButton, [line, resetButton]() {
                     using namespace ftxui;
                     return hbox({
@@ -233,8 +248,7 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
                 auto resetButton = ftxui::Button("Reset", [weakSelf, key]() {
                     if (auto self = weakSelf.lock()) {
                         self->resetMax(key);
-                    }
-                },ftxui::ButtonOption::Ascii());
+                    } }, ftxui::ButtonOption::Ascii());
                 auto row = ftxui::Renderer(resetButton, [line, resetButton]() {
                     using namespace ftxui;
                     return hbox({
@@ -259,9 +273,9 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
     core::ModuleContext& moduleContext;
     std::vector<core::SourceMetadata> sources;
     std::vector<std::string> sourceTitles;
-    int selectedIndex{0};
+    int selectedIndex { 0 };
     std::string currentSourceId;
-    int observerToken{0};
+    int observerToken { 0 };
     std::map<std::string, MetricStats> metrics;
     mutable std::recursive_mutex mutex;
 
@@ -272,7 +286,8 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
 class NumericDataComponent : public ftxui::ComponentBase {
 public:
     explicit NumericDataComponent(std::shared_ptr<NumericDataState> state)
-        : state_(std::move(state)) {
+        : state_(std::move(state))
+    {
         buildSourceList();
 
         ftxui::MenuOption menuOption;
@@ -309,14 +324,16 @@ public:
         }
     }
 
-    ~NumericDataComponent() override {
+    ~NumericDataComponent() override
+    {
         if (state_) {
             state_->unsubscribe();
         }
     }
 
 private:
-    void buildSourceList() {
+    void buildSourceList()
+    {
         auto metadata = state_->moduleContext.dataRegistry.listSources();
         for (const auto& meta : metadata) {
             if (meta.kind == core::DataKind::Numeric) {
@@ -326,7 +343,7 @@ private:
         }
 
         if (state_->sources.empty()) {
-            state_->sourceTitles = {"No numeric sources available"};
+            state_->sourceTitles = { "No numeric sources available" };
         }
     }
 
@@ -334,32 +351,38 @@ private:
     ftxui::Component menuComponent_;
 };
 
-}  // namespace
+} // namespace
 
 NumericDataModule::NumericDataModule() = default;
 
-std::string NumericDataModule::id() const {
+std::string NumericDataModule::id() const
+{
     return "ui.numeric_data";
 }
 
-std::string NumericDataModule::displayName() const {
+std::string NumericDataModule::displayName() const
+{
     return "Numeric Data Viewer";
 }
 
-void NumericDataModule::initialize(core::ModuleContext& context) {
+void NumericDataModule::initialize(core::ModuleContext& context)
+{
     context_ = &context;
 }
 
-void NumericDataModule::shutdown(core::ModuleContext& context) {
+void NumericDataModule::shutdown(core::ModuleContext& context)
+{
     (void)context;
     context_ = nullptr;
 }
 
-std::vector<core::SourceMetadata> NumericDataModule::declareSources() {
+std::vector<core::SourceMetadata> NumericDataModule::declareSources()
+{
     return {};
 }
 
-std::vector<ui::WindowSpec> NumericDataModule::createDefaultWindows(core::ModuleContext& context) {
+std::vector<ui::WindowSpec> NumericDataModule::createDefaultWindows(core::ModuleContext& context)
+{
     ui::WindowSpec spec;
     spec.id = "ui.numeric_data.window";
     spec.title = "Numeric Data";
@@ -370,5 +393,5 @@ std::vector<ui::WindowSpec> NumericDataModule::createDefaultWindows(core::Module
         return std::make_shared<NumericDataComponent>(std::move(state));
     };
 
-    return {spec};
+    return { spec };
 }
