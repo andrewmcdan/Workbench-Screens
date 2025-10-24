@@ -1,19 +1,24 @@
 #include "PluginManager.h"
 
 #include "DataRegistry.h"
+#include <spdlog/spdlog.h>
 
 #include <utility>
 
 namespace core {
 
 PluginManager::PluginManager(ModuleContext& context)
-    : context_(context) {}
+    : context_(context)
+{
+}
 
-PluginManager::~PluginManager() {
+PluginManager::~PluginManager()
+{
     shutdownModules();
 }
 
-void PluginManager::registerModule(ModulePtr module) {
+void PluginManager::registerModule(ModulePtr module)
+{
     if (!module) {
         return;
     }
@@ -22,6 +27,8 @@ void PluginManager::registerModule(ModulePtr module) {
     auto* modulePtr = module.get();
     moduleSources_.try_emplace(moduleId);
     modules_.push_back(std::move(module));
+
+    spdlog::debug("Registered module '{}'", modulePtr->id());
 
     if (initialized_) {
         auto declared = modulePtr->declareSources();
@@ -35,7 +42,8 @@ void PluginManager::registerModule(ModulePtr module) {
     }
 }
 
-void PluginManager::initializeModules() {
+void PluginManager::initializeModules()
+{
     if (initialized_) {
         return;
     }
@@ -51,18 +59,21 @@ void PluginManager::initializeModules() {
 
     for (auto& module : modules_) {
         module->initialize(context_);
+        spdlog::info("Initialized module '{}'", module->id());
     }
 
     initialized_ = true;
 }
 
-void PluginManager::shutdownModules() {
+void PluginManager::shutdownModules()
+{
     if (!initialized_) {
         return;
     }
 
     for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) {
         auto& module = *it;
+        spdlog::info("Shutting down module '{}'", module->id());
         module->shutdown(context_);
         auto mapIt = moduleSources_.find(module->id());
         if (mapIt != moduleSources_.end()) {
@@ -75,7 +86,8 @@ void PluginManager::shutdownModules() {
     initialized_ = false;
 }
 
-void PluginManager::tickModules(std::chrono::milliseconds delta) {
+void PluginManager::tickModules(std::chrono::milliseconds delta)
+{
     if (!initialized_) {
         return;
     }
@@ -85,8 +97,9 @@ void PluginManager::tickModules(std::chrono::milliseconds delta) {
     }
 }
 
-const std::vector<ModulePtr>& PluginManager::modules() const {
+const std::vector<ModulePtr>& PluginManager::modules() const
+{
     return modules_;
 }
 
-}  // namespace core
+} // namespace core

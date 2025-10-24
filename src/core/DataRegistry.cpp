@@ -1,27 +1,32 @@
 #include "DataRegistry.h"
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 
 namespace core {
 
-void DataRegistry::registerSource(SourceMetadata metadata) {
+void DataRegistry::registerSource(SourceMetadata metadata)
+{
     std::unique_lock lock(mutex_);
     metadata_[metadata.id] = std::move(metadata);
 }
 
-void DataRegistry::unregisterSource(const std::string& sourceId) {
+void DataRegistry::unregisterSource(const std::string& sourceId)
+{
     std::unique_lock lock(mutex_);
     metadata_.erase(sourceId);
     latestFrames_.erase(sourceId);
     observers_.erase(sourceId);
 }
 
-bool DataRegistry::isRegistered(const std::string& sourceId) const {
+bool DataRegistry::isRegistered(const std::string& sourceId) const
+{
     std::shared_lock lock(mutex_);
     return metadata_.find(sourceId) != metadata_.end();
 }
 
-std::optional<SourceMetadata> DataRegistry::metadata(const std::string& sourceId) const {
+std::optional<SourceMetadata> DataRegistry::metadata(const std::string& sourceId) const
+{
     std::shared_lock lock(mutex_);
     if (auto it = metadata_.find(sourceId); it != metadata_.end()) {
         return it->second;
@@ -29,7 +34,8 @@ std::optional<SourceMetadata> DataRegistry::metadata(const std::string& sourceId
     return std::nullopt;
 }
 
-std::vector<SourceMetadata> DataRegistry::listSources() const {
+std::vector<SourceMetadata> DataRegistry::listSources() const
+{
     std::shared_lock lock(mutex_);
     std::vector<SourceMetadata> result;
     result.reserve(metadata_.size());
@@ -39,7 +45,8 @@ std::vector<SourceMetadata> DataRegistry::listSources() const {
     return result;
 }
 
-void DataRegistry::update(const DataFrame& frame) {
+void DataRegistry::update(const DataFrame& frame)
+{
     std::vector<Observer> callbacks;
     {
         std::unique_lock lock(mutex_);
@@ -51,6 +58,7 @@ void DataRegistry::update(const DataFrame& frame) {
             }
         }
     }
+    spdlog::trace("DataRegistry: update for source '{}' with {} points", frame.sourceId, frame.points.size());
     for (const auto& cb : callbacks) {
         if (cb) {
             cb(frame);
@@ -58,7 +66,8 @@ void DataRegistry::update(const DataFrame& frame) {
     }
 }
 
-std::optional<DataFrame> DataRegistry::latest(const std::string& sourceId) const {
+std::optional<DataFrame> DataRegistry::latest(const std::string& sourceId) const
+{
     std::shared_lock lock(mutex_);
     if (auto it = latestFrames_.find(sourceId); it != latestFrames_.end()) {
         return it->second;
@@ -66,24 +75,27 @@ std::optional<DataFrame> DataRegistry::latest(const std::string& sourceId) const
     return std::nullopt;
 }
 
-int DataRegistry::addObserver(const std::string& sourceId, Observer observer) {
+int DataRegistry::addObserver(const std::string& sourceId, Observer observer)
+{
     std::unique_lock lock(mutex_);
     const int token = nextObserverId_++;
-    observers_[sourceId].push_back(ObserverEntry{token, std::move(observer)});
+    observers_[sourceId].push_back(ObserverEntry { token, std::move(observer) });
     return token;
 }
 
-void DataRegistry::removeObserver(const std::string& sourceId, int token) {
+void DataRegistry::removeObserver(const std::string& sourceId, int token)
+{
     std::unique_lock lock(mutex_);
     if (auto it = observers_.find(sourceId); it != observers_.end()) {
         auto& entries = it->second;
         entries.erase(std::remove_if(entries.begin(), entries.end(), [token](const ObserverEntry& entry) {
             return entry.id == token;
-        }), entries.end());
+        }),
+            entries.end());
         if (entries.empty()) {
             observers_.erase(it);
         }
     }
 }
 
-}  // namespace core
+} // namespace core

@@ -35,6 +35,15 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_MakeAvailable(nlohmann_json)
 
+FetchContent_Declare(spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG v1.11.0
+    GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
+)
+
+FetchContent_MakeAvailable(spdlog)
+
 FetchContent_Declare(
     json_rpc_cxx
     GIT_REPOSITORY https://github.com/jsonrpcx/json-rpc-cxx.git
@@ -54,7 +63,17 @@ if(NOT json_rpc_cxx_POPULATED)
 endif()
 set(JSONRPCCPP_INCLUDE_DIR "${jsonrpccpp_SOURCE_DIR}/src")
 
+set(ARGPARSE_HEADER ${CMAKE_SOURCE_DIR}/libraries/argparse.hpp)
 
+if(NOT EXISTS ${ARGPARSE_HEADER})
+    file(DOWNLOAD
+        https://raw.githubusercontent.com/p-ranav/argparse/master/include/argparse/argparse.hpp
+        ${ARGPARSE_HEADER}
+    )
+endif()
+
+# add library includes
+include_directories(${CMAKE_SOURCE_DIR}/libraries)
 
 file(GLOB_RECURSE WORKBENCH_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -76,4 +95,5 @@ target_link_libraries(${PROJECT_NAME}
         ftxui::dom
         ftxui::component
         nlohmann_json::nlohmann_json
+    spdlog::spdlog
 )

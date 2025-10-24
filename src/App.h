@@ -17,6 +17,7 @@ public:
     App();
 
     void registerModule(core::ModulePtr module);
+    void setHardwareMockEnabled(bool enabled);
     int run();
 
     core::DataRegistry& dataRegistry();

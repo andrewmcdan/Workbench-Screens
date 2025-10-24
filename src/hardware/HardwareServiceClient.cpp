@@ -2,8 +2,9 @@
 
 #include "core/DataRegistry.h"
 #include "core/Types.h"
-#include "core/Types.h"
+#include <spdlog/spdlog.h>
 
+#include "flags.h"
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -21,9 +22,11 @@ namespace jsonrpc {
 class JsonRpcException : public std::runtime_error {
 public:
     explicit JsonRpcException(const std::string& message)
-        : std::runtime_error(message) {}
+        : std::runtime_error(message)
+    {
+    }
 };
-}  // namespace jsonrpc
+} // namespace jsonrpc
 // #endif
 
 #ifndef _WIN32
@@ -36,7 +39,8 @@ public:
 
 namespace {
 
-core::DataKind ParseKind(const std::string& text) {
+core::DataKind ParseKind(const std::string& text)
+{
     std::string lower = text;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
@@ -59,7 +63,8 @@ core::DataKind ParseKind(const std::string& text) {
     return core::DataKind::Custom;
 }
 
-std::chrono::system_clock::time_point ParseTimestamp(const nlohmann::json& value) {
+std::chrono::system_clock::time_point ParseTimestamp(const nlohmann::json& value)
+{
     if (value.is_number()) {
         const double seconds = value.get<double>();
         auto duration = std::chrono::duration_cast<std::chrono::system_clock::duration>(
@@ -80,26 +85,32 @@ std::chrono::system_clock::time_point ParseTimestamp(const nlohmann::json& value
     return std::chrono::system_clock::now();
 }
 
-std::string ToJsonRpcId(uint64_t counter) {
+std::string ToJsonRpcId(uint64_t counter)
+{
     return "ui-" + std::to_string(counter);
 }
 
-}  // namespace
+} // namespace
 
 namespace hardware {
 
 HardwareServiceClient::HardwareServiceClient(core::DataRegistry& registry)
-    : registry_(registry) {}
+    : registry_(registry)
+{
+}
 
-HardwareServiceClient::~HardwareServiceClient() {
+HardwareServiceClient::~HardwareServiceClient()
+{
     stop();
 }
 
-void HardwareServiceClient::configure(Options options) {
+void HardwareServiceClient::configure(Options options)
+{
     options_ = std::move(options);
 }
 
-void HardwareServiceClient::start() {
+void HardwareServiceClient::start()
+{
 #ifdef _WIN32
     // Unix domain sockets are not supported on Windows. The client remains dormant.
     (void)running_;
@@ -108,11 +119,64 @@ void HardwareServiceClient::start() {
         return;
     }
     running_ = true;
-    worker_ = std::thread(&HardwareServiceClient::run, this);
+    // If mock mode is enabled, register the mock source synchronously so it is visible
+    // during UI bootstrap, then start a mock publisher thread.
+    if (options_.enableMock) {
+        const std::string sourceId = "mock.12v";
+        // Register metadata for mock source synchronously so the UI can discover it.
+        core::SourceMetadata meta;
+        meta.id = sourceId;
+        meta.name = "12V Supply";
+        meta.kind = core::DataKind::Numeric;
+        meta.unit = std::string("V");
+        registry_.registerSource(meta);
+        spdlog::info("HardwareServiceClient: registered mock source '{}'", meta.id);
+
+        // Start a light-weight mock worker that publishes a 1Hz sine wave
+        worker_ = std::thread([this, sourceId]() {
+            using namespace std::chrono_literals;
+            const std::string channelId = "12v";
+
+            const double amplitude = 0.5; // +/-0.5V
+            const double offset = 12.0; // center 12V
+            const double freqHz = 1.0; // 1 Hz
+            const auto period = std::chrono::milliseconds(20); // 50 Hz update
+            auto start = std::chrono::steady_clock::now();
+            while (running_) {
+                auto now = std::chrono::steady_clock::now();
+                std::chrono::duration<double> t = now - start;
+                double angle = 2.0 * M_PI * freqHz * t.count();
+                double value = offset + amplitude * std::sin(angle);
+
+                core::NumericSample sample;
+                sample.value = value; // ensure double
+                sample.unit = "V";
+                sample.timestamp = std::chrono::system_clock::now();
+
+                core::DataPoint point;
+                point.channelId = channelId;
+                point.payload = sample;
+
+                core::DataFrame frame;
+                frame.sourceId = sourceId;
+                frame.sourceName = "12V Supply";
+                frame.timestamp = sample.timestamp;
+                frame.points.push_back(std::move(point));
+
+                registry_.update(frame);
+                spdlog::trace("HardwareServiceClient: published mock frame {} -> {}", frame.sourceId, value);
+
+                std::this_thread::sleep_for(period);
+            }
+        });
+    } else {
+        worker_ = std::thread(&HardwareServiceClient::run, this);
+    }
 #endif
 }
 
-void HardwareServiceClient::stop() {
+void HardwareServiceClient::stop()
+{
 #ifdef _WIN32
     running_ = false;
 #else
@@ -127,7 +191,8 @@ void HardwareServiceClient::stop() {
 #endif
 }
 
-void HardwareServiceClient::subscribeSource(const std::string& sourceId) {
+void HardwareServiceClient::subscribeSource(const std::string& sourceId)
+{
     if (sourceId.empty()) {
         return;
     }
@@ -144,7 +209,8 @@ void HardwareServiceClient::subscribeSource(const std::string& sourceId) {
     }
 }
 
-void HardwareServiceClient::unsubscribeSource(const std::string& sourceId) {
+void HardwareServiceClient::unsubscribeSource(const std::string& sourceId)
+{
     if (sourceId.empty()) {
         return;
     }
@@ -163,25 +229,28 @@ void HardwareServiceClient::unsubscribeSource(const std::string& sourceId) {
 }
 
 void HardwareServiceClient::requestMetricReset(const std::string& sourceId,
-                                               const std::string& channelId,
-                                               const std::string& metric) {
+    const std::string& channelId,
+    const std::string& metric)
+{
     if (sourceId.empty() || channelId.empty() || metric.empty()) {
         return;
     }
-    nlohmann::json request{
-        {"jsonrpc", "2.0"},
-        {"id", nextRequestId()},
-        {"method", "workbench.resetMetric"},
-        {"params",
-         {
-             {"sourceId", sourceId},
-             {"channelId", channelId},
-             {"metric", metric},
-         }}};
+    nlohmann::json request {
+        { "jsonrpc", "2.0" },
+        { "id", nextRequestId() },
+        { "method", "workbench.resetMetric" },
+        { "params",
+            {
+                { "sourceId", sourceId },
+                { "channelId", channelId },
+                { "metric", metric },
+            } }
+    };
     sendJson(request);
 }
 
-void HardwareServiceClient::run() {
+void HardwareServiceClient::run()
+{
 #ifndef _WIN32
     while (running_) {
         try {
@@ -202,7 +271,8 @@ void HardwareServiceClient::run() {
 #endif
 }
 
-void HardwareServiceClient::connectSocket() {
+void HardwareServiceClient::connectSocket()
+{
 #ifndef _WIN32
     closeSocket();
 
@@ -211,7 +281,7 @@ void HardwareServiceClient::connectSocket() {
         throw std::runtime_error("HardwareServiceClient: failed to create socket");
     }
 
-    sockaddr_un addr{};
+    sockaddr_un addr {};
     std::memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     if (options_.socketPath.size() >= sizeof(addr.sun_path)) {
@@ -231,7 +301,8 @@ void HardwareServiceClient::connectSocket() {
 #endif
 }
 
-void HardwareServiceClient::closeSocket() {
+void HardwareServiceClient::closeSocket()
+{
 #ifndef _WIN32
     const int fd = socketFd_.exchange(-1);
     if (fd >= 0) {
@@ -240,7 +311,8 @@ void HardwareServiceClient::closeSocket() {
 #endif
 }
 
-void HardwareServiceClient::readLoop() {
+void HardwareServiceClient::readLoop()
+{
 #ifndef _WIN32
     const int fd = socketFd_.load();
     if (fd < 0) {
@@ -263,7 +335,7 @@ void HardwareServiceClient::readLoop() {
                 }
             }
         } else if (bytesRead == 0) {
-            break;  // connection closed cleanly
+            break; // connection closed cleanly
         } else {
             if (errno == EINTR) {
                 continue;
@@ -279,7 +351,8 @@ void HardwareServiceClient::readLoop() {
 #endif
 }
 
-void HardwareServiceClient::handleIncomingMessage(const std::string& message) {
+void HardwareServiceClient::handleIncomingMessage(const std::string& message)
+{
     try {
         auto json = nlohmann::json::parse(message);
 
@@ -297,14 +370,16 @@ void HardwareServiceClient::handleIncomingMessage(const std::string& message) {
     }
 }
 
-void HardwareServiceClient::handleResponse(const nlohmann::json& response) {
+void HardwareServiceClient::handleResponse(const nlohmann::json& response)
+{
     // Currently, we have no stateful request tracking. This is a placeholder for
     // future acknowledgement handling.
     (void)response;
 }
 
 void HardwareServiceClient::handleRelayNotification(const std::string& method,
-                                                    const nlohmann::json& params) {
+    const nlohmann::json& params)
+{
     if (method == "workbench.dataFrame") {
         publishFrameFromJson(params);
         return;
@@ -329,7 +404,8 @@ void HardwareServiceClient::handleRelayNotification(const std::string& method,
     // handled here once the relay exposes them.
 }
 
-void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
+void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params)
+{
     if (!params.contains("frame")) {
         return;
     }
@@ -358,7 +434,7 @@ void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
     core::DataFrame frame;
     frame.sourceId = sourceId;
     frame.sourceName = frameJson.value("sourceName", metadata.name.empty() ? sourceId : metadata.name);
-    frame.timestamp = ParseTimestamp(frameJson.value("timestamp", nlohmann::json{}));
+    frame.timestamp = ParseTimestamp(frameJson.value("timestamp", nlohmann::json {}));
 
     const auto& pointsJson = frameJson.value("points", nlohmann::json::array());
     for (const auto& pointJson : pointsJson) {
@@ -375,7 +451,7 @@ void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
         } else if (pointJson.contains("waveform")) {
             const auto& waveform = pointJson.at("waveform");
             core::WaveformSample sample;
-            sample.samples = waveform.value("samples", std::vector<double>{});
+            sample.samples = waveform.value("samples", std::vector<double> {});
             sample.sampleRateHz = waveform.value("sampleRate", 0.0);
             sample.timestamp = frame.timestamp;
             point.payload = sample;
@@ -388,7 +464,7 @@ void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
         } else if (pointJson.contains("logic")) {
             const auto& logic = pointJson.at("logic");
             core::LogicSample sample;
-            sample.channels = logic.value("channels", std::vector<bool>{});
+            sample.channels = logic.value("channels", std::vector<bool> {});
             const auto periodNs = logic.value("periodNs", 0LL);
             sample.samplePeriod = std::chrono::nanoseconds(periodNs);
             sample.timestamp = frame.timestamp;
@@ -396,11 +472,11 @@ void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
         } else if (pointJson.contains("gpio")) {
             const auto& gpio = pointJson.at("gpio");
             core::GpioState state;
-            state.pins = gpio.value("pins", std::vector<bool>{});
+            state.pins = gpio.value("pins", std::vector<bool> {});
             state.timestamp = frame.timestamp;
             point.payload = state;
         } else {
-            point.payload = std::monostate{};
+            point.payload = std::monostate {};
         }
 
         frame.points.push_back(std::move(point));
@@ -409,7 +485,8 @@ void HardwareServiceClient::publishFrameFromJson(const nlohmann::json& params) {
     registry_.update(frame);
 }
 
-void HardwareServiceClient::registerMetadataFromJson(const nlohmann::json& meta) {
+void HardwareServiceClient::registerMetadataFromJson(const nlohmann::json& meta)
+{
     if (!meta.contains("id")) {
         return;
     }
@@ -426,14 +503,16 @@ void HardwareServiceClient::registerMetadataFromJson(const nlohmann::json& meta)
     registry_.registerSource(std::move(metadata));
 }
 
-void HardwareServiceClient::resendSubscriptions() {
+void HardwareServiceClient::resendSubscriptions()
+{
     std::lock_guard lock(subscriptionsMutex_);
     for (const auto& sourceId : subscribedSources_) {
         sendSubscriptionMessage(sourceId);
     }
 }
 
-void HardwareServiceClient::sendJson(const nlohmann::json& message) {
+void HardwareServiceClient::sendJson(const nlohmann::json& message)
+{
 #ifndef _WIN32
     const int fd = socketFd_.load();
     if (fd < 0) {
@@ -457,51 +536,57 @@ void HardwareServiceClient::sendJson(const nlohmann::json& message) {
 #endif
 }
 
-void HardwareServiceClient::sendSubscriptionMessage(const std::string& sourceId) {
+void HardwareServiceClient::sendSubscriptionMessage(const std::string& sourceId)
+{
     if (sourceId.empty()) {
         return;
     }
-    nlohmann::json request{
-        {"jsonrpc", "2.0"},
-        {"id", nextRequestId()},
-        {"method", "workbench.subscribe"},
-        {"params",
-         {
-             {"sourceId", sourceId},
-         }}};
+    nlohmann::json request {
+        { "jsonrpc", "2.0" },
+        { "id", nextRequestId() },
+        { "method", "workbench.subscribe" },
+        { "params",
+            {
+                { "sourceId", sourceId },
+            } }
+    };
     sendJson(request);
 }
 
-void HardwareServiceClient::sendUnsubscribeMessage(const std::string& sourceId) {
+void HardwareServiceClient::sendUnsubscribeMessage(const std::string& sourceId)
+{
     if (sourceId.empty()) {
         return;
     }
-    nlohmann::json request{
-        {"jsonrpc", "2.0"},
-        {"id", nextRequestId()},
-        {"method", "workbench.unsubscribe"},
-        {"params",
-         {
-             {"sourceId", sourceId},
-         }}};
+    nlohmann::json request {
+        { "jsonrpc", "2.0" },
+        { "id", nextRequestId() },
+        { "method", "workbench.unsubscribe" },
+        { "params",
+            {
+                { "sourceId", sourceId },
+            } }
+    };
     sendJson(request);
 }
 
-void HardwareServiceClient::sendRegisterClient() {
-    nlohmann::json request{
-        {"jsonrpc", "2.0"},
-        {"id", nextRequestId()},
-        {"method", "workbench.registerClient"},
-        {"params",
-         {
-             {"protocol", 1},
-         }}};
+void HardwareServiceClient::sendRegisterClient()
+{
+    nlohmann::json request {
+        { "jsonrpc", "2.0" },
+        { "id", nextRequestId() },
+        { "method", "workbench.registerClient" },
+        { "params",
+            {
+                { "protocol", 1 },
+            } }
+    };
     sendJson(request);
 }
 
-std::string HardwareServiceClient::nextRequestId() {
+std::string HardwareServiceClient::nextRequestId()
+{
     return ToJsonRpcId(++requestCounter_);
 }
 
-}  // namespace hardware
-
+} // namespace hardware

@@ -3,15 +3,15 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
 #include <thread>
 #include <vector>
-#include <nlohmann/json_fwd.hpp>
 
 namespace core {
 class DataRegistry;
-}  // namespace core
+} // namespace core
 
 namespace hardware {
 
@@ -25,8 +25,9 @@ namespace hardware {
 class HardwareServiceClient {
 public:
     struct Options {
-        std::string socketPath{"/var/run/workbench/hardware-relay.sock"};
-        std::chrono::milliseconds reconnectDelay{std::chrono::seconds(2)};
+        std::string socketPath { "/var/run/workbench/hardware-relay.sock" };
+        std::chrono::milliseconds reconnectDelay { std::chrono::seconds(2) };
+        bool enableMock { false };
     };
 
     explicit HardwareServiceClient(core::DataRegistry& registry);
@@ -40,8 +41,8 @@ public:
     void unsubscribeSource(const std::string& sourceId);
 
     void requestMetricReset(const std::string& sourceId,
-                            const std::string& channelId,
-                            const std::string& metric);
+        const std::string& channelId,
+        const std::string& metric);
 
 private:
     void run();
@@ -66,17 +67,16 @@ private:
     Options options_;
 
     std::thread worker_;
-    std::atomic<bool> running_{false};
+    std::atomic<bool> running_ { false };
 
-    std::atomic<int> socketFd_{-1};
+    std::atomic<int> socketFd_ { -1 };
     std::mutex sendMutex_;
     std::string readBuffer_;
 
     std::mutex subscriptionsMutex_;
     std::vector<std::string> subscribedSources_;
 
-    std::atomic<uint64_t> requestCounter_{0};
+    std::atomic<uint64_t> requestCounter_ { 0 };
 };
 
-}  // namespace hardware
-
+} // namespace hardware
