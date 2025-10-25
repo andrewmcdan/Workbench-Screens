@@ -302,68 +302,20 @@ struct GraphingState : std::enable_shared_from_this<GraphingState> {
     std::shared_ptr<ftxui::ComponentBase> graphPane;
 
     const size_t maxSamples { 80 };
-    std::thread refresherThread;
-    std::atomic<bool> refresherRunning { false };
-    // Notifier to wake the refresher only when new data arrives.
-    std::condition_variable refresherCv;
-    std::mutex refresherMutex;
-    std::atomic<int> pendingNotifications { 0 };
-
-    void startRefresher()
-    {
-        bool expected = false;
-        if (!refresherRunning.compare_exchange_strong(expected, true)) {
-            return; // already running
-        }
-        auto self = weak_from_this();
-        refresherThread = std::thread([self]() {
-            while (true) {
-                auto s = self.lock();
-                if (!s)
-                    break;
-
-                std::unique_lock<std::mutex> lk(s->refresherMutex);
-                // Wait until there is pending work or refresher is stopping or owner expired.
-                s->refresherCv.wait(lk, [s]() { return !s->refresherRunning.load() || s->pendingNotifications.load() > 0 || !s; });
-
-                if (!s || !s->refresherRunning.load())
-                    break;
-
-                // Drain pending notifications
-                int pending = s->pendingNotifications.exchange(0);
-                lk.unlock();
-
-                if (pending <= 0) {
-                    continue; // spurious wakeup
-                }
-
-                if (auto* screen = ftxui::ScreenInteractive::Active()) {
-                    screen->Post([s]() {
-                        if (s->graphPane)
-                            s->rebuildGraphPane();
-                    });
-                }
-            }
-        });
-    }
-
-    void stopRefresher()
-    {
-        bool expected = true;
-        if (!refresherRunning.compare_exchange_strong(expected, false)) {
-            return; // not running
-        }
-        // Wake the refresher so it can exit promptly.
-        refresherCv.notify_all();
-        if (refresherThread.joinable()) {
-            refresherThread.join();
-        }
-    }
-
+    // No per-module refresher any more. Use the centralized postRedraw callback on moduleContext
+    // to request UI redraws from other threads.
     void notifyNewData()
     {
-        pendingNotifications.fetch_add(1);
-        refresherCv.notify_one();
+        if (moduleContext.postRedraw) {
+            auto self = shared_from_this();
+            moduleContext.postRedraw([self]() {
+                if (self->graphPane)
+                    self->rebuildGraphPane();
+            });
+        } else {
+            // Fallback: request a local rebuild if no central callback is available.
+            requestRebuild();
+        }
     }
 };
 
@@ -387,8 +339,6 @@ public:
         });
 
         state_->graphPane = ftxui::Container::Vertical({});
-        // Start a small refresher to ensure the UI updates even when there's no input.
-        state_->startRefresher();
         auto graphFrame = ftxui::Renderer(state_->graphPane, [state = state_]() {
             using namespace ftxui;
             return state->graphPane->Render() | vscroll_indicator | frame | flex;
@@ -408,7 +358,6 @@ public:
     {
         if (state_) {
             state_->unsubscribe();
-            state_->stopRefresher();
         }
     }
 

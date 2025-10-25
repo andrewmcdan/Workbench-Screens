@@ -33,5 +33,7 @@ private:
     core::PluginManager pluginManager_;
     ui::Dashboard dashboard_;
     std::vector<ui::WindowSpec> registeredWindows_;
-    bool modulesBootstrapped_{false};
+    bool modulesBootstrapped_ { false };
+    // Central redraw notifier: posts UI rebuilds from other threads.
+    std::function<void()> postRedrawCallback_;
 };

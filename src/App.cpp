@@ -50,6 +50,10 @@ int App::run()
     if (component) {
         ftxui::Terminal::SetColorSupport(ftxui::Terminal::Color::TrueColor);
         auto screen = ftxui::ScreenInteractive::Fullscreen();
+        // Provide modules with a centralized post-redraw callback that posts to the active screen.
+        moduleContext_.postRedraw = [&screen](std::function<void()> job) {
+            screen.Post(std::move(job));
+        };
         screen.Loop(component);
     }
 
