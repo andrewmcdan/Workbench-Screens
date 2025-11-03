@@ -14,10 +14,12 @@
 #include <vector>
 
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
 #include "flags.h"
+#include <spdlog/fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -312,10 +314,9 @@ struct GraphingState : std::enable_shared_from_this<GraphingState> {
                 if (self->graphPane)
                     self->rebuildGraphPane();
             });
-        } else {
-            // Fallback: request a local rebuild if no central callback is available.
-            requestRebuild();
         }
+        // Always request a local rebuild as a secondary trigger.
+        requestRebuild();
     }
 };
 
@@ -327,15 +328,21 @@ public:
         buildSourceList();
 
         ftxui::MenuOption menuOption;
-        menuOption.on_change = [weak = std::weak_ptr(state_), this]() {
-            if (auto state = weak.lock())
+        auto triggerSelect = [weak = std::weak_ptr(state_), this]() {
+            if (auto state = weak.lock()) {
+                if (flags::logLevel >= 3) {
+                    spdlog::debug("Graphing menu on_change: index={} source_count={}", state->selectedIndex, state->sources.size());
+                }
                 state->selectSource(state->selectedIndex, false);
+            }
         };
+        menuOption.on_change = triggerSelect;
+        // menuOption.on_enter = triggerSelect;
 
         menuComponent_ = ftxui::Menu(&state_->sourceTitles, &state_->selectedIndex, menuOption);
         auto menuFrame = ftxui::Renderer(menuComponent_, [menuComponent = menuComponent_]() {
             using namespace ftxui;
-            return menuComponent->Render() | vscroll_indicator | frame | size(WIDTH, LESS_THAN, 30);
+            return menuComponent->Render() | vscroll_indicator;
         });
 
         state_->graphPane = ftxui::Container::Vertical({});
@@ -365,6 +372,14 @@ private:
     void buildSourceList()
     {
         auto metadata = state_->moduleContext.dataRegistry.listSources();
+        if (flags::logLevel >= 3) {
+            std::vector<std::string> ids;
+            ids.reserve(metadata.size());
+            for (const auto& meta : metadata) {
+                ids.push_back(meta.id);
+            }
+            spdlog::debug("Graphing: buildSourceList saw {} sources: {}", ids.size(), fmt::join(ids, ", "));
+        }
         for (const auto& meta : metadata) {
             if (meta.kind == core::DataKind::Numeric) {
                 state_->sources.push_back(meta);

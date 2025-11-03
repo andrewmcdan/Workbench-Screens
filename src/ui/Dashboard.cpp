@@ -12,6 +12,9 @@
 #include <ftxui/dom/node.hpp>
 #include <ftxui/util/ref.hpp>
 
+#include "flags.h"
+#include <spdlog/spdlog.h>
+
 namespace ui {
 
 Dashboard::Dashboard(core::ModuleContext& moduleContext)
@@ -412,8 +415,26 @@ ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance)
         });
     });
 
+    auto tracedInner = innerRenderer;
+    tracedInner |= ftxui::CatchEvent([id = instance.instanceId](ftxui::Event event) {
+        if (!event.is_mouse()) {
+            return false;
+        }
+        if (flags::logLevel >= 4) {
+            const auto& mouse = event.mouse();
+            spdlog::trace(
+                "Dashboard inner '{}' mouse event button={} motion={} x={} y={}",
+                id,
+                static_cast<int>(mouse.button),
+                static_cast<int>(mouse.motion),
+                mouse.x,
+                mouse.y);
+        }
+        return false;
+    });
+
     WindowOptions options;
-    options.inner = innerRenderer;
+    options.inner = tracedInner;
     options.title = title;
     options.left = &instance.left;
     options.top = &instance.top;
@@ -423,7 +444,24 @@ ftxui::Component Dashboard::buildWindowComponent(WindowInstance& instance)
     options.resize_right = &instance.resizeRight;
     options.resize_top = &instance.resizeTop;
     options.resize_down = &instance.resizeBottom;
-    return Window(std::move(options));
+    auto windowComponent = Window(std::move(options));
+    windowComponent |= ftxui::CatchEvent([id = instance.instanceId](ftxui::Event event) {
+        if (!event.is_mouse()) {
+            return false;
+        }
+        if (flags::logLevel >= 4) {
+            const auto& mouse = event.mouse();
+            spdlog::trace(
+                "Dashboard window '{}' mouse event button={} motion={} x={} y={}",
+                id,
+                static_cast<int>(mouse.button),
+                static_cast<int>(mouse.motion),
+                mouse.x,
+                mouse.y);
+        }
+        return false;
+    });
+    return windowComponent;
 }
 
 } // namespace ui

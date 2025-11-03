@@ -12,8 +12,12 @@
 #include <vector>
 
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+
+#include "flags.h"
+#include <spdlog/spdlog.h>
 
 namespace {
 
@@ -52,6 +56,9 @@ struct NumericDataState : std::enable_shared_from_this<NumericDataState> {
         const std::string newSource = sources[static_cast<std::size_t>(index)].id;
         if (!force && newSource == currentSourceId) {
             return;
+        }
+        if (flags::logLevel >= 3) {
+            spdlog::debug("NumericData: selecting source '{}' (index={})", newSource, index);
         }
         subscribe(newSource);
     }
@@ -291,16 +298,21 @@ public:
         buildSourceList();
 
         ftxui::MenuOption menuOption;
-        menuOption.on_change = [weak = std::weak_ptr(state_), this]() {
+        auto triggerSelect = [weak = std::weak_ptr(state_), this]() {
             if (auto state = weak.lock()) {
+                if (flags::logLevel >= 3) {
+                    spdlog::debug("Numeric menu on_change: index={} source_count={}", state->selectedIndex, state->sources.size());
+                }
                 state->selectSource(state->selectedIndex, false);
             }
         };
+        menuOption.on_change = triggerSelect;
+        menuOption.on_enter = triggerSelect;
 
         menuComponent_ = ftxui::Menu(&state_->sourceTitles, &state_->selectedIndex, menuOption);
         auto menuFrame = ftxui::Renderer(menuComponent_, [menuComponent = menuComponent_]() {
             using namespace ftxui;
-            return menuComponent->Render() | vscroll_indicator | frame | size(WIDTH, LESS_THAN, 30);
+            return menuComponent->Render() | vscroll_indicator;
         });
 
         state_->metricsPane = ftxui::Container::Vertical({});

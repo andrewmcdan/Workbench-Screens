@@ -52,7 +52,11 @@ int App::run()
         auto screen = ftxui::ScreenInteractive::Fullscreen();
         // Provide modules with a centralized post-redraw callback that posts to the active screen.
         moduleContext_.postRedraw = [&screen](std::function<void()> job) {
-            screen.Post(std::move(job));
+            screen.Post([job = std::move(job), &screen]() mutable {
+                if (job)
+                    job();
+                screen.RequestAnimationFrame();
+            });
         };
         screen.Loop(component);
     }
